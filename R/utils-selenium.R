@@ -9,7 +9,6 @@ driver_selenium <- function(download_dir,
                             headless = TRUE) {
   options <- webdriver$ChromeOptions()
   options$headless <- headless
-  options$add_argument(stringr::str_glue("user-agent={user_agent()}"))
 
   prefs <- list(`download.default_directory` = fs::path_abs(download_dir) |>
                   stringr::str_replace_all("/", r"(\\)"))
