@@ -24,20 +24,27 @@ dnli <- function(url, # download_dir,
     }
   }
 
-  table <- driver$find_element(By$CSS_SELECTOR, "table.mb30.responsive-table")
-  menu_button <- table$find_elements(By$CSS_SELECTOR, "a#menu-button")
-  onclick <- menu_button |>
-    purrr::map_chr(function(menu_button) {
-      menu_button$get_attribute("onclick")
-    }) |>
-    stringr::str_extract("(?<='\\.\\./)data/.+(?=')")
-  onclick <- stringr::str_c("https://nlftp.mlit.go.jp/ksj/gml/", onclick)
+  table <- driver$find_elements(By$CSS_SELECTOR, "table.mb30.responsive-table")
 
-  table <- table$get_attribute("outerHTML") |>
-    rvest::read_html() |>
-    rvest::html_table() |>
-    dplyr::first() |>
-    tibble::add_column(onclick = onclick) |>
+  pb <- progress::progress_bar$new(total = vec_size(table))
+  table <- table |>
+    purrr::map_dfr(function(table) {
+      menu_button <- table$find_elements(By$CSS_SELECTOR, "a#menu-button")
+      onclick <- menu_button |>
+        purrr::map_chr(function(menu_button) {
+          menu_button$get_attribute("onclick")
+        }) |>
+        stringr::str_extract("(?<='(\\.\\.|/ksj/gml)/)data/.+(?=')")
+      onclick <- stringr::str_c("https://nlftp.mlit.go.jp/ksj/gml/", onclick)
+
+      table <- table$get_attribute("outerHTML") |>
+        rvest::read_html() |>
+        rvest::html_table() |>
+        dplyr::first() |>
+        tibble::add_column(onclick = onclick)
+      pb$tick()
+      table
+    }) |>
     dplyr::select(!"\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9") |> # Download
     dplyr::rename(region = "\u5730\u57df",
                   datum = "\u6e2c\u5730\u7cfb",
