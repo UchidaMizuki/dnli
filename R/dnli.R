@@ -1,15 +1,15 @@
 #' Digital national land information
 #'
 #' @export
-dnli <- function(url, download_dir,
+dnli <- function(url, # download_dir,
                  headless = TRUE) {
   check_paths_allowed(url)
 
-  driver <- driver_selenium(download_dir = download_dir,
-                            headless = headless)
+  driver <- driver_selenium(headless = headless)
+  on.exit(driver$close())
 
-  Sys.sleep(1)
   driver$get(url)
+  Sys.sleep(1)
 
   Jmap <- driver$find_elements(By$CSS_SELECTOR, "ul#Jmap")
   if (!vec_is_empty(Jmap)) {
@@ -25,11 +25,19 @@ dnli <- function(url, download_dir,
   }
 
   table <- driver$find_element(By$CSS_SELECTOR, "table.mb30.responsive-table")
+  menu_button <- table$find_elements(By$CSS_SELECTOR, "a#menu-button")
+  onclick <- menu_button |>
+    purrr::map_chr(function(menu_button) {
+      menu_button$get_attribute("onclick")
+    }) |>
+    stringr::str_extract("(?<='\\.\\./)data/.+(?=')")
+  onclick <- stringr::str_c("https://nlftp.mlit.go.jp/ksj/gml/", onclick)
+
   table <- table$get_attribute("outerHTML") |>
     rvest::read_html() |>
     rvest::html_table() |>
     dplyr::first() |>
-    tibble::add_column(menu_button = table$find_elements(By$CSS_SELECTOR, "a#menu-button")) |>
+    tibble::add_column(onclick = onclick) |>
     dplyr::select(!"\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9") |> # Download
     dplyr::rename(region = "\u5730\u57df",
                   datum = "\u6e2c\u5730\u7cfb",
@@ -40,51 +48,26 @@ dnli <- function(url, download_dir,
                   file_size = fs::as_fs_bytes(.data$file_size))
 
   stickyr::new_sticky_tibble(table,
-                             cols = c("file_name", "menu_button"),
-                             col_show = !"menu_button",
-                             attrs = c("download_dir", "driver"),
-                             download_dir = download_dir,
-                             driver = driver,
+                             cols = c("file_name", "onclick"),
+                             col_show = !"onclick",
                              class = "dnli",
                              class_grouped_df = "dnli",
                              class_rowwise_df = "dnli")
 }
 
 #' @export
-collect.dnli <- function(x, ...,
+collect.dnli <- function(x, download_dir, ...,
                          unzip = TRUE) {
-  x <- dplyr::ungroup(x)
-  download_dir <- attr(x, "download_dir")
-
-  driver <- attr(x, "driver")
   file <- fs::path(download_dir, x$file_name)
-  menu_button <- x$menu_button
+  onclick <- x$onclick
 
-  # Skip user survey
-  try({
-    menu_button[[1]]$click()
-    close_btn_X <- driver$find_element(By$CSS_SELECTOR, "div.close_btn_X")
-
-    if (close_btn_X$is_displayed()) {
-      close_btn_X$click()
-      warn("Skipped user survey. Please fill out the user survey later.")
-    }
-  },
-  silent = TRUE)
-
-  pb <- progress::progress_bar$new(total = vec_size(file))
-  purrr::walk2(file, menu_button,
-               purrr::slowly(function(file, menu_button) {
+  pb <- progress::progress_bar$new(total = vec_size(onclick))
+  purrr::walk2(onclick, file,
+               purrr::slowly(function(onclick, file) {
                  pb$tick()
-
-                 if (fs::file_exists(file)) {
-                   fs::file_delete(file)
-                 }
-
-                 menu_button$click()
-                 driver$switch_to$alert$accept()
-
-                 check_file(file)
+                 download.file(onclick, file,
+                               mode = "wb",
+                               quiet = TRUE)
 
                  if (unzip) {
                    exdir <- file |>
@@ -96,10 +79,57 @@ collect.dnli <- function(x, ...,
                    fs::file_delete(file)
                  }
                }))
-
-  driver$close()
-  invisible()
 }
+
+# collect.dnli <- function(x, ...,
+#                          unzip = TRUE) {
+#   x <- dplyr::ungroup(x)
+#   download_dir <- attr(x, "download_dir")
+#
+#   driver <- attr(x, "driver")
+#   file <- fs::path(download_dir, x$file_name)
+#   menu_button <- x$menu_button
+#
+#   # Skip user survey
+#   try({
+#     menu_button[[1]]$click()
+#     close_btn_X <- driver$find_element(By$CSS_SELECTOR, "div.close_btn_X")
+#
+#     if (close_btn_X$is_displayed()) {
+#       close_btn_X$click()
+#       warn("Skipped user survey. Please fill out the user survey later.")
+#     }
+#   },
+#   silent = TRUE)
+#
+#   pb <- progress::progress_bar$new(total = vec_size(file))
+#   purrr::walk2(file, menu_button,
+#                purrr::slowly(function(file, menu_button) {
+#                  pb$tick()
+#
+#                  if (fs::file_exists(file)) {
+#                    fs::file_delete(file)
+#                  }
+#
+#                  menu_button$click()
+#                  driver$switch_to$alert$accept()
+#
+#                  check_file(file)
+#
+#                  if (unzip) {
+#                    exdir <- file |>
+#                      stringr::str_extract("(?<=/)[^/]+(?=\\.zip$)")
+#                    exdir <- fs::path(download_dir, exdir)
+#
+#                    unzip(file,
+#                          exdir = exdir)
+#                    fs::file_delete(file)
+#                  }
+#                }))
+#
+#   driver$close()
+#   invisible()
+# }
 
 #' @export
 tbl_sum.dnli <- function(x) {

@@ -5,7 +5,7 @@ Select <- NULL
 # ActionChains <- NULL
 ChromeDriverManager <- NULL
 
-driver_selenium <- function(download_dir,
+driver_selenium <- function(download_dir = NULL,
                             headless = TRUE) {
   options <- webdriver$ChromeOptions()
   options$headless <- headless

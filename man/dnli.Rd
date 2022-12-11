@@ -4,7 +4,7 @@
 \alias{dnli}
 \title{Digital national land information}
 \usage{
-dnli(url, download_dir, headless = TRUE)
+dnli(url, headless = TRUE)
 }
 \description{
 Digital national land information
